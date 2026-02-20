@@ -137,6 +137,12 @@ Window CreateWindowPlatform(const str &name, const i32 &width, const i32 &height
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
     RegisterClassA(&wc);
 
+    // Adjust rect to account for window frame
+    RECT rect = {0, 0, width, height};
+    AdjustWindowRect(&rect, WS_OVERLAPPEDWINDOW, FALSE);
+    i32 windowWidth = rect.right - rect.left;
+    i32 windowHeight = rect.bottom - rect.top;
+
     // Create window
     window = CreateWindowExA(
         0,
@@ -144,7 +150,7 @@ Window CreateWindowPlatform(const str &name, const i32 &width, const i32 &height
         name,
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT,
-        956, 540,
+        windowWidth, windowHeight,
         NULL,
         NULL,
         hInstance,

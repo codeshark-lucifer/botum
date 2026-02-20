@@ -1,18 +1,6 @@
 #pragma once
 #include "utils.h"
 
-struct alignas(16) Transform
-{
-    ivec2 ioffset;     // 8 bytes
-    ivec2 isize;       // 8 bytes
-    vec2 pos;          // 8 bytes
-    vec2 size;         // 8 bytes
-    vec4 color;        // 16 bytes
-    int renderOptions; // 4 bytes
-    float layer;       // 4 bytes
-    int _padding[2];   // padding for std430 alignment
-};
-
 struct Camera2D
 {
     vec2 pos;
@@ -28,8 +16,6 @@ struct Camera2D
 struct RenderData
 {
     Camera2D camera;
-    Array<Transform> transforms;
-    Array<Transform> uiTransforms;
 
     void OnResize(int x, int y)
     {

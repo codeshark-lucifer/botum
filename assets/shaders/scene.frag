@@ -10,17 +10,19 @@ uniform int isFont;
 
 void main()
 {
-    vec4 texColor = texture(textureAtlas, textureCoordsIn);
-
-    if(isFont != 0)
+    if (isFont == 2) 
     {
-        float alpha = texColor.r;
+        fragColor = baseColor;
+    }
+    else if(isFont == 1)
+    {
+        float alpha = texture(textureAtlas, textureCoordsIn).r;
         if(alpha < 0.01) discard;
-        // Use .rgb from the vec4
         fragColor = vec4(baseColor.rgb, alpha); 
     }
     else
     {
+        vec4 texColor = texture(textureAtlas, textureCoordsIn);
         if(texColor.a < 0.01) discard;
         fragColor = texColor * baseColor;
     }

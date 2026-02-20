@@ -4,19 +4,22 @@
 
 struct Input_
 {
-    // Input
-    bool keyDown[256] = {false};    // VK_* codes
-    bool keyPressed[256] = {false}; // pressed this frame
+    bool keyDown[256] = {false};
+    bool keyPressed[256] = {false};
     bool keyReleased[256] = {false};
 
-    bool mouseDown[5] = {false}; // Left, Right, Middle, X1, X2
+    bool mouseDown[5] = {false};
     bool mousePressed[5] = {false};
     bool mouseReleased[5] = {false};
+
     i32 mouseX = 0;
     i32 mouseY = 0;
     i32 prevMouseX = 0;
     i32 prevMouseY = 0;
     i32 scrollY = 0;
+
+    c32 typedChar = 0;
+    bool charTyped = false;
 
     ivec2 screen;
 };

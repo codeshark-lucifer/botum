@@ -94,6 +94,10 @@ bool IsKeyPressed(KeyCode keycode);
 bool IsKeyDown(KeyCode keycode);
 bool IsKeyUp(KeyCode keycode);
 
+bool IsMouseButtonPressed(i32 button);
+bool IsMouseButtonDown(i32 button);
+bool IsMouseButtonUp(i32 button);
+
 ivec2 GetMousePos();
 vec2 GetMouseDelta();
 i32 GetScrollY();
@@ -101,3 +105,4 @@ i32 GetScrollY();
 bool GetMouseButtonDown(i32 button);
 bool GetMouseButtonUp(i32 button);
 
+bool IsKeyTypedChar(c32* chr);

@@ -27,6 +27,7 @@ typedef int16_t  i16;
 typedef int32_t  i32;
 typedef int64_t  i64;
 
+typedef char32_t c32;
 typedef const char* str;
 
 typedef IVec2 ivec2;

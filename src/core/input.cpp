@@ -15,6 +15,19 @@ bool IsKeyUp(KeyCode keycode) {
 }
 
 // ---------------- Mouse ----------------
+bool IsMouseButtonPressed(i32 button) {
+    return input->mousePressed[button];
+}
+
+bool IsMouseButtonDown(i32 button) {
+    return input->mouseDown[button];
+}
+
+bool IsMouseButtonUp(i32 button) {
+    return input->mouseReleased[button];
+}
+
+// ---------------- Mouse ----------------
 ivec2 GetMousePos() {
     return ivec2{ input->mouseX, input->mouseY };
 }
@@ -34,4 +47,14 @@ bool GetMouseButtonDown(i32 button) {
 
 bool GetMouseButtonUp(i32 button) {
     return input->mouseReleased[button];
+}
+
+bool IsKeyTypedChar(c32* chr)
+{
+    if (input->charTyped)
+    {
+        *chr = input->typedChar;
+        return true;
+    }
+    return false;
 }

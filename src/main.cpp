@@ -5,6 +5,9 @@
 #include <engine/render_types.h>
 #include <engine/gl_renderer.hpp>
 #include <engine/interface.h>
+#include <editor/buffer.hpp>
+
+GapBufferBytes buffer;
 
 void Update(float dt);
 int main()
@@ -32,7 +35,6 @@ int main()
     DestroyPlatform();
 }
 
-void step();
 void simulate();
 void render();
 
@@ -45,31 +47,29 @@ void Update(float dt)
 
     while (accumulator >= FIXED_DELTA)
     {
-        step();        // input
-        simulate();    // physics
+        simulate(); // input
         accumulator -= FIXED_DELTA;
     }
 
     render(); // render once per frame
 }
 
-void step() {
-
+void simulate()
+{
+    if (IsKeyPressed(KEY_RIGHT))
+        buffer.move(buffer.cursor() + 1);
+    if (IsKeyPressed(KEY_LEFT))
+        buffer.move(buffer.cursor() - 1);
+    if (IsKeyPressed(KEY_BACKSPACE))
+        buffer.backward();
+    if (IsKeyPressed(KEY_DELETE))
+        buffer.forward();
+    c32 ch;
+    if (IsKeyTypedChar(&ch))
+        buffer.insert(ch);
 }
 
-void simulate() {
-
-}
-
-void render() {
+void render()
+{
     DrawUIText("Hello World", vec2(0.0f), 100.0f);
-    renderData->transforms.push_back(Transform{
-        .ioffset = ivec2(0),
-        .isize = ivec2(1),
-        .pos = vec2(0.0f),
-        .size = vec2(100.0f),
-        .color = vec4(1.0f),
-        .renderOptions = 0,
-        .layer = 0.0f
-    });
 }

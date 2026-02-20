@@ -48,6 +48,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         return 0;
     }
 
+    case WM_CHAR:
+    {
+        unsigned int ch = (unsigned int)wParam;
+
+        if (ch >= 32 || ch == '\n' || ch == '\t')
+        {
+            input->typedChar = (char)ch;
+            input->charTyped = true;
+        }
+        return 0;
+    }
+
     case WM_KEYDOWN:
         // lParam bit 30: previous state, bit 31: transition
         if (!(lParam & 0x40000000)) // key wasn't down before
@@ -147,7 +159,7 @@ Window CreateWindowPlatform(const str &name, const i32 &width, const i32 &height
     PIXELFORMATDESCRIPTOR pfd = {};
     pfd.nSize = sizeof(pfd);
     pfd.nVersion = 1;
-    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
+    pfd.dwFlags = PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER | PFD_SUPPORT_COMPOSITION;
     pfd.iPixelType = PFD_TYPE_RGBA;
     pfd.cColorBits = 32;
     pfd.cDepthBits = 24;
@@ -214,7 +226,7 @@ Window CreateWindowPlatform(const str &name, const i32 &width, const i32 &height
 void PollEvent(Event *event)
 {
     glViewport(0, 0, input->screen.x, input->screen.y);
-    
+
     LARGE_INTEGER now;
     QueryPerformanceCounter(&now);
     event->deltaTime = (float)(now.QuadPart - lastCounter.QuadPart) / frequency.QuadPart;
@@ -225,6 +237,9 @@ void PollEvent(Event *event)
         input->keyPressed[i] = false;
         input->keyReleased[i] = false;
     }
+
+    input->charTyped = false;
+
     for (int i = 0; i < 5; i++)
     {
         input->mousePressed[i] = false;

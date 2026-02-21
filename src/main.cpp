@@ -4,20 +4,25 @@
 #include <engine/render_types.h>
 #include <engine/gl_renderer.hpp>
 
-void Update(float dt) {
+void Update(float dt)
+{
 }
 
-int main() {
+int main()
+{
     InitPlatform();
     CreateWindowPlatform("Botum Editor", 956, 540);
     InitGLRenderer();
 
-    while (!ShouldClose()) {
-        Event e; PollEvent(&e);
+    while (!ShouldClose())
+    {
+        Event e;
+        PollEvent(&e);
         Update(e.deltaTime);
         glRender();
         SwapBuffersWindow();
     }
-    DestroyGLContext(); DestroyPlatform();
+    DestroyGLContext();
+    DestroyPlatform();
     return 0;
 }

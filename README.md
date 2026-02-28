@@ -1,18 +1,17 @@
-- OpenGL ( Rendering API )
-- Win32 ( Window & Input )
-- GLAD ( Load OpenGL functions )
-- Utils ( Math, Vectors, Matrices )
-- stb_image ( Texture Loading )
-- ImGui ( Debugging UI ) * Optionsl
+- OpenGL ( Rendering API ) ✓
+- Win32 ( Window & Input ) ✓
+- GLAD ( Load OpenGL functions ) ✓
+- Utils ( Math, Vectors, Matrices ) ✓
+- stb_image ( Texture Loading ) ✓
+- ImGui ( Debugging UI ) * Optionsl 
 
-+ Compiler ( MinGW ) 
-+ CMakeLists for configure
++ Compiler ( MinGW ) ✓
++ CMakeLists for configure ✓
 
-
-+ Structure Project
-- Core
++ Structure Project 
+- Core ✓
 - Renderer
-- Math
+- Math ✓
 - ECS
 - Resources
 - Game
@@ -20,11 +19,11 @@
 - utils.h ( for customize helper datatype )
 
 * Core Systems:
-- Load Window 
-- Load Glad 
-- Create Context OpenGL
-- Game Loop
-
+- Load Window  ✓
+- Load Glad  ✓
+- Create Context OpenGL ✓
+- Game Loop ✓
+- Game Machanic
 
 * Rendering System (2D)
 - Vertex Buffer

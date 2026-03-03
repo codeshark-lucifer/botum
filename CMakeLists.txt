@@ -30,7 +30,9 @@ add_subdirectory(vendor/glad)
 
 add_executable(app 
     src/main.cpp
+    src/core/helper.cpp
     src/core/win32.cpp
+    src/core/shader.cpp
 )
 
 target_include_directories(app PRIVATE 

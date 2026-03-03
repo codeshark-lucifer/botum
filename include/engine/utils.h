@@ -20,3 +20,7 @@ typedef std::string str;
 
 template<typename T>
 using array = std::vector<T>;
+
+
+char *read_file(str path);
+int write_file(str path, const char *buffer, u64 size);

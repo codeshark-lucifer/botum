@@ -21,6 +21,7 @@ typedef std::string str;
 template<typename T>
 using array = std::vector<T>;
 
+#define PI 3.14159265358979323846
 
 char *read_file(str path);
 int write_file(str path, const char *buffer, u64 size);

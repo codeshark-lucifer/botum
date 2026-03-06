@@ -76,3 +76,5 @@ inline Vec3 operator*(const Quat &q, const Vec3 &v)
            v * (s * s - Vec3::Dot(u, u)) +
            Vec3::Cross(u, v) * (2.0f * s);
 }
+
+typedef Quat quat;

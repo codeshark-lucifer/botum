@@ -33,6 +33,7 @@ add_executable(app
     src/core/helper.cpp
     src/core/win32.cpp
     src/core/shader.cpp
+    src/core/stb_image.cpp
 )
 
 target_include_directories(app PRIVATE 

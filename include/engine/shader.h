@@ -1,5 +1,6 @@
 #pragma once
 #include "utils.h"
+#include <mathf/matries.h>
 
 class Shader
 {
@@ -18,3 +19,8 @@ private:
 private:
     u32 id = 0;
 };
+
+template <> void Shader::SetUniform<float>(str name, float value);
+template <> void Shader::SetUniform<int>(str name, int value);
+template <> void Shader::SetUniform<bool>(str name, bool value);
+template <> void Shader::SetUniform<mat4>(str name, mat4 value);

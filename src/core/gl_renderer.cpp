@@ -8,9 +8,11 @@
 #include <stb/stb_image.h>
 
 #include <sstream>
+#include <hb.h>
+#include <hb-ft.h>
 
 GLContext gl;
-std::map<char, Character> Characters;
+std::map<u32, Character> GlyphCache;
 
 std::vector<Vertex> CreateQuad(vec2 pos, vec2 size, vec2 uv_offset, vec2 uv_size)
 {
@@ -27,19 +29,18 @@ std::vector<Vertex> CreateQuad(vec2 pos, vec2 size, vec2 uv_offset, vec2 uv_size
 bool LoadFont(const std::string &filepath)
 {
     FT_Library ft;
-    if (FT_Init_FreeType(&ft))
-        return false;
+    if (FT_Init_FreeType(&ft)) return false;
 
     FT_Face face;
-    if (FT_New_Face(ft, filepath.c_str(), 0, &face))
-        return false;
+    if (FT_New_Face(ft, filepath.c_str(), 0, &face)) return false;
 
     FT_Set_Pixel_Sizes(face, 0, 48);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 
-    for (unsigned char c = 0; c < 128; c++)
+    // Load every glyph present in the font file
+    for (u32 glyphIndex = 0; glyphIndex < face->num_glyphs; glyphIndex++)
     {
-        if (FT_Load_Char(face, c, FT_LOAD_RENDER))
+        if (FT_Load_Glyph(face, glyphIndex, FT_LOAD_RENDER))
             continue;
 
         u32 texture;
@@ -58,16 +59,26 @@ bool LoadFont(const std::string &filepath)
             texture,
             ivec2(face->glyph->bitmap.width, face->glyph->bitmap.rows),
             ivec2(face->glyph->bitmap_left, face->glyph->bitmap_top),
-            (u32)face->glyph->advance.x};
-        Characters[c] = character;
+            (u32)face->glyph->advance.x
+        };
+        
+        // Store by Glyph Index, not Character Code
+        GlyphCache[glyphIndex] = character;
     }
-    FT_Done_Face(face);
-    FT_Done_FreeType(ft);
+
+    // Keep the face pointer if you want to use it for HarfBuzz shaping later
+    // For this example, we'll assume you store it in a global or the GLContext
+    gl.fontFace = face; 
+    gl.hbFont = hb_ft_font_create(face, NULL);
+
     return true;
 }
 
 bool InitGLRender()
 {
+    gl.fontFace = nullptr;
+    gl.hbFont = nullptr;
+
     if (!LoadFont("assets/fonts/arial.ttf"))
     {
         printf("Warning: Failed to load font\n");
@@ -95,7 +106,8 @@ bool InitGLRender()
 
 void glRender()
 {
-    if (!gl.shader || gl.shader->GetID() == 0) return;
+    if (!gl.shader || gl.shader->GetID() == 0)
+        return;
 
     gl.shader->Use();
     mat4 worldProj = mat4::Ortho(0, (float)input.screen.x, 0, (float)input.screen.y, -1.0f, 1.0f);
@@ -134,10 +146,11 @@ void glRender()
     for (const auto &batch : gl.ui_batch)
     {
         gl.shader->SetUniform("baseColor", batch.color);
-        if (batch.sprite.path.empty()) continue;
-        
+        if (batch.sprite.path.empty())
+            continue;
+
         u32 texID = std::stoul(batch.sprite.path);
-        
+
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texID);
 
@@ -149,11 +162,17 @@ void glRender()
     gl.world_batch.clear();
 }
 
-void DestroyGLContext() {
+void DestroyGLContext()
+{
     if (gl.shader)
     {
         delete gl.shader;
         gl.shader = nullptr;
+    }
+    if (gl.hbFont)
+    {
+        hb_font_destroy(gl.hbFont);
+        gl.hbFont = nullptr;
     }
     glDeleteBuffers(1, &gl.vbo);
     glDeleteVertexArrays(1, &gl.vao);
@@ -221,103 +240,96 @@ void DrawRectangle(vec2 pos, vec2 size, vec3 color, Texture sprite)
 
 void DrawTextUI(TextData text, vec2 pos, VerticalAlignment vAlign, TextAlignment hAlign)
 {
-    float lineHeight = 48.0f * text.scale;
-    float startX = pos.x;
+    if (!gl.fontFace || !gl.hbFont) return;
 
-    // --- PASS 1: WORD WRAP LAYOUT ---
-    std::vector<std::string> lines;
-    std::string currentLine = "";
-    float currentLineWidth = 0.0f;
-
-    std::stringstream ss(text.content);
-    std::string word;
-
-    while (ss >> word) {
-        float wordWidth = 0;
-        for (char c : word) {
-            if (Characters.find(c) != Characters.end())
-                wordWidth += (Characters[c].Advance >> 6) * text.scale;
-        }
-        
-        float spaceWidth = (Characters[' '].Advance >> 6) * text.scale;
-
-        if (text.maxWidth > 0 && (currentLineWidth + wordWidth) > text.maxWidth && !currentLine.empty()) {
-            lines.push_back(currentLine);
-            currentLine = word;
-            currentLineWidth = wordWidth;
-        } else {
-            if (!currentLine.empty()) {
-                currentLine += " ";
-                currentLineWidth += spaceWidth;
-            }
-            currentLine += word;
-            currentLineWidth += wordWidth;
-        }
-    }
-    if (!currentLine.empty()) lines.push_back(currentLine);
-
-    // --- PASS 2: VERTICAL ALIGNMENT CALCULATION ---
-    float totalBlockHeight = (float)lines.size() * lineHeight;
+    // 1. Create HarfBuzz Buffer
+    hb_buffer_t *hb_buf = hb_buffer_create();
     
-    // We adjust the starting Y so the ENTIRE block is centered on 'pos.y'
-    if (vAlign == VerticalAlignment::Middle) {
-        // Move up by half the block height, then adjust for the first line's baseline
-        pos.y += (totalBlockHeight * 0.5f) - (lineHeight * 0.75f);
-    } 
-    else if (vAlign == VerticalAlignment::Top) {
-        // Start at the very top of the box
-        pos.y += totalBlockHeight - lineHeight;
+    // Set text and guess language/script
+    hb_buffer_add_utf8(hb_buf, text.content.c_str(), -1, 0, -1);
+    
+    // Explicitly set script for Khmer if needed, otherwise guess
+    bool hasKhmer = false;
+    for (unsigned char c : text.content) {
+        if (c >= 0xe0 && c <= 0xef) { // Rough check for UTF-8 Khmer range start
+            hasKhmer = true;
+            break;
+        }
     }
-    // Bottom alignment stays at the provided pos.y
 
-    // --- PASS 3: RENDER ---
-    for (const std::string& line : lines) {
-        float lineX = startX;
+    if (hasKhmer) {
+        hb_buffer_set_script(hb_buf, HB_SCRIPT_KHMER);
+        hb_buffer_set_language(hb_buf, hb_language_from_string("km", -1));
+    }
+    
+    hb_buffer_guess_segment_properties(hb_buf);
 
-        // Per-line Horizontal Alignment
-        if (hAlign == TextAlignment::Center && text.maxWidth > 0) {
-            float lw = 0;
-            for (char c : line) lw += (Characters[c].Advance >> 6) * text.scale;
-            lineX += (text.maxWidth - lw) * 0.5f;
-        } 
-        else if (hAlign == TextAlignment::Right && text.maxWidth > 0) {
-            float lw = 0;
-            for (char c : line) lw += (Characters[c].Advance >> 6) * text.scale;
-            lineX += (text.maxWidth - lw);
+    // 2. Shape the text using cached hbFont
+    hb_shape(gl.hbFont, hb_buf, NULL, 0);
+
+    // 3. Get glyph information
+    unsigned int glyph_count;
+    hb_glyph_info_t *glyph_info = hb_buffer_get_glyph_infos(hb_buf, &glyph_count);
+    hb_glyph_position_t *glyph_pos = hb_buffer_get_glyph_positions(hb_buf, &glyph_count);
+
+    // 4. Calculate total width for horizontal alignment
+    float totalWidth = 0;
+    for (unsigned int i = 0; i < glyph_count; i++) {
+        totalWidth += (glyph_pos[i].x_advance >> 6) * text.scale;
+    }
+
+    // Adjust start X based on alignment
+    float startX = pos.x;
+    if (hAlign == TextAlignment::Center) startX -= totalWidth * 0.5f;
+    else if (hAlign == TextAlignment::Right) startX -= totalWidth;
+
+    // Adjust start Y for vertical alignment (Middle)
+    float lineHeight = 48.0f * text.scale;
+    if (vAlign == VerticalAlignment::Middle) pos.y -= (lineHeight * 0.25f);
+
+    // 5. Render Pass
+    float cursorX = startX;
+    for (unsigned int i = 0; i < glyph_count; i++)
+    {
+        u32 gid = glyph_info[i].codepoint; // HarfBuzz returns Glyph ID here
+        if (GlyphCache.find(gid) == GlyphCache.end()) continue;
+
+        Character& ch = GlyphCache[gid];
+
+        // HarfBuzz provides offsets (crucial for Khmer vowels/subscripts)
+        float x_offset = (glyph_pos[i].x_offset >> 6) * text.scale;
+        float y_offset = (glyph_pos[i].y_offset >> 6) * text.scale;
+
+        float xpos = cursorX + (ch.Bearing.x * text.scale) + x_offset;
+        float ypos = pos.y - (ch.Size.y - ch.Bearing.y) * text.scale + y_offset;
+        float w = ch.Size.x * text.scale;
+        float h = ch.Size.y * text.scale;
+
+        // Batching
+        Texture charSprite;
+        charSprite.path = std::to_string(ch.texID);
+
+        Batch* targetBatch = nullptr;
+        for (auto& b : gl.ui_batch) {
+            if (b.sprite.path == charSprite.path && b.color == text.color) {
+                targetBatch = &b;
+                break;
+            }
         }
 
-        for (char c : line) {
-            if (Characters.find(c) == Characters.end()) continue;
-            Character ch = Characters[c];
-
-            float xpos = lineX + ch.Bearing.x * text.scale;
-            float ypos = pos.y - (ch.Size.y - ch.Bearing.y) * text.scale;
-            float w = ch.Size.x * text.scale;
-            float h = ch.Size.y * text.scale;
-
-            Texture charSprite;
-            charSprite.path = std::to_string(ch.texID);
-
-            Batch* targetBatch = nullptr;
-            for (auto& b : gl.ui_batch) {
-                if (b.sprite.path == charSprite.path && b.color == text.color) {
-                    targetBatch = &b;
-                    break;
-                }
-            }
-
-            if (!targetBatch) {
-                gl.ui_batch.push_back(Batch{.color = text.color, .sprite = charSprite});
-                targetBatch = &gl.ui_batch.back();
-            }
-
-            auto verts = CreateQuad({xpos, ypos}, {w, h}, {0.0f, 1.0f}, {1.0f, -1.0f});
-            targetBatch->vertices.insert(targetBatch->vertices.end(), verts.begin(), verts.end());
-
-            lineX += (ch.Advance >> 6) * text.scale;
+        if (!targetBatch) {
+            gl.ui_batch.push_back(Batch{.color = text.color, .sprite = charSprite});
+            targetBatch = &gl.ui_batch.back();
         }
-        
-        // Step down to the next line
-        pos.y -= lineHeight; 
+
+        auto verts = CreateQuad({xpos, ypos}, {w, h}, {0.0f, 1.0f}, {1.0f, -1.0f});
+        targetBatch->vertices.insert(targetBatch->vertices.end(), verts.begin(), verts.end());
+
+        // Advance cursor
+        cursorX += (glyph_pos[i].x_advance >> 6) * text.scale;
+        pos.y += (glyph_pos[i].y_advance >> 6) * text.scale;
     }
+
+    // Clean up
+    hb_buffer_destroy(hb_buf);
 }

@@ -74,23 +74,6 @@ struct Entity
 
 static ecs::World world;
 
-float CalculateTextWidth(const str &content, float scale)
-{
-    float width = 0.0f;
-
-    for (char c : content)
-    {
-        // Skip characters we don't have glyphs for
-        if (Characters.find(c) == Characters.end())
-            continue;
-
-        // ch.Advance is in 1/64 pixels, so divide by 64
-        width += (Characters[c].Advance >> 6) * scale;
-    }
-
-    return width;
-}
-
 void RenderSystem()
 {
     // --- 1. WORLD SPACE ---
@@ -141,15 +124,25 @@ void RenderSystem()
         vec2 safePos = rect.position + txt.padding;
         vec2 safeSize = rect.size - (txt.padding * 2.0f);
 
-        // For "Middle", we pass the center of the safe zone
+        // Calculate anchor based on alignment
         vec2 renderAnchor = safePos;
+        
+        if (txt.horizontal == TextAlignment::Center)
+        {
+            renderAnchor.x = safePos.x + (safeSize.x * 0.5f);
+        }
+        else if (txt.horizontal == TextAlignment::Right)
+        {
+            renderAnchor.x = safePos.x + safeSize.x;
+        }
+
         if (txt.vertical == VerticalAlignment::Middle)
         {
             renderAnchor.y = safePos.y + (safeSize.y * 0.5f);
         }
         else if (txt.vertical == VerticalAlignment::Top)
         {
-            renderAnchor.y = safePos.y; // DrawTextUI will handle the "offset from top"
+            renderAnchor.y = safePos.y; 
         }
 
         DrawTextUI(TextData{
@@ -260,7 +253,17 @@ void Start()
                 printf("Button Clicked! Spawning an entity...\n");
                 // You can even interact with the world here!
             }});
-}
+
+    Entity khmerText = {world.CreateEntity(), &world};
+    khmerText.Add(RectTransform{vec2(100, 400), vec2(400, 100)})
+        .Add(Text{
+            .content = "សួស្តីពិភពលោក (Hello World)",
+            .scale = 1.0f,
+            .color = vec3(1.0f),
+            .horizontal = TextAlignment::Left,
+            .vertical = VerticalAlignment::Middle
+        });
+    }
 
 void Update(float deltaTime)
 {

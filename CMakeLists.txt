@@ -25,7 +25,14 @@ if(NOT EXISTS ${FREETYPE_DIR}/CMakeLists.txt)
     endif()
 endif()
 
+# HarfBuzz configuration
+set(HB_HAVE_FREETYPE ON CACHE BOOL "" FORCE)
+set(HB_BUILD_SUBSET OFF CACHE BOOL "" FORCE)
+set(HB_HAVE_GOBJECT OFF CACHE BOOL "" FORCE)
+set(HB_HAVE_ICU OFF CACHE BOOL "" FORCE)
+
 add_subdirectory(${FREETYPE_DIR})
+add_subdirectory(vendor/harfbuzz)
 add_subdirectory(vendor/glad) 
 
 add_executable(app 
@@ -37,8 +44,12 @@ add_executable(app
     src/core/gl_renderer.cpp
 )
 
+target_compile_definitions(app PRIVATE HAVE_FREETYPE=1)
+
 target_include_directories(app PRIVATE 
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/harfbuzz/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/vendor/freetype/include
 )
 
 target_link_libraries(app PRIVATE 
@@ -48,6 +59,7 @@ target_link_libraries(app PRIVATE
     glad    # OpenGL function loader
     dwmapi  # DWM for window composition, transparency, etc.
     freetype # FreeType for font rendering
+    harfbuzz # Font support utf-8
 )
 
 # if(WIN32)

@@ -10,6 +10,12 @@
 #include <unordered_map>
 #include <map>
 
+#include <ft2build.h>
+#include FT_FREETYPE_H
+
+#include <hb.h>
+#include <hb-ft.h>
+
 struct Vertex
 {
     vec2 position;
@@ -24,10 +30,10 @@ struct Character
     u32 Advance;
 };
 
-enum Shape
+enum class Shape
 {
     Rect,
-    Cirle,
+    Circle,
     Triangle
 };
 
@@ -53,6 +59,8 @@ struct GLContext
     std::vector<Batch> ui_batch;           // UI batch
     std::unordered_map<str, u32> textures; // container map of text
     Shader *shader;
+    FT_Face fontFace;
+    hb_font_t *hbFont;
 };
 
 struct TextData
@@ -79,7 +87,7 @@ enum class VerticalAlignment
 
 // --- Globals ---
 extern GLContext gl;
-extern std::map<char, Character> Characters;
+extern std::map<u32, Character> GlyphCache;
 
 std::vector<Vertex> CreateQuad(vec2 pos, vec2 size, vec2 uv_offset, vec2 uv_size);
 bool LoadFont(const std::string &filepath);

@@ -14,6 +14,9 @@ void main()
         // FreeType renders glyphs to a GL_RED texture. 
         // We use that red value as our alpha mask.
         float alpha = texture(spriteTexture, TexCoords).r;
+        if(alpha < 0.1) 
+            discard;
+
         FragColor = vec4(baseColor, alpha);
     }
     else if(useTexture)

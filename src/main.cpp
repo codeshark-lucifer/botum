@@ -1,9 +1,200 @@
+#include <functional>
+
 #include <platform/win32.h>
 #include <engine/gl_renderer.h>
+#include <ecs/ecs.h>
 
-void Start();
+struct Transform
+{
+    vec2 position;
+    vec2 size;
+};
+
+struct RectTransform
+{
+    vec2 position;
+    vec2 size;
+};
+
+struct Sprite
+{
+    str path;
+    vec3 color;
+};
+
+struct Text
+{
+    str content;
+    float scale;
+    vec3 color;
+    TextAlignment horizontal = TextAlignment::Left;
+    VerticalAlignment vertical = VerticalAlignment::Middle;
+
+    vec2 padding = vec2(10.0f, 5.0f); // Default: 10px sides, 5px top/bottom
+};
+
+struct Image
+{
+    Sprite sprite;
+};
+
+struct Canvas
+{
+    Image image;
+};
+
+struct Button
+{
+    bool hovered;
+    bool pressed;
+    bool lastPressed;              // To detect the exact "Click" moment
+    std::function<void()> onClick; // The callback function
+};
+
+struct Entity
+{
+    ecs::EntityID id;
+    ecs::World *world;
+
+    // A helper to add components easily
+    template <typename T>
+    Entity &Add(T component)
+    {
+        world->AddComponent<T>(id, component);
+        return *this; // This allows "Chaining" (linking calls together)
+    }
+
+    // A helper to get components
+    template <typename T>
+    T &Get()
+    {
+        return world->GetComponent<T>(id);
+    }
+};
+
+static ecs::World world;
+
+float CalculateTextWidth(const str &content, float scale)
+{
+    float width = 0.0f;
+
+    for (char c : content)
+    {
+        // Skip characters we don't have glyphs for
+        if (Characters.find(c) == Characters.end())
+            continue;
+
+        // ch.Advance is in 1/64 pixels, so divide by 64
+        width += (Characters[c].Advance >> 6) * scale;
+    }
+
+    return width;
+}
+
+void RenderSystem()
+{
+    // --- 1. WORLD SPACE ---
+    auto *transforms = world.GetPool<Transform>();
+    auto *sprites = world.GetPool<Sprite>();
+    for (size_t i = 0; i < sprites->data.size(); ++i)
+    {
+        ecs::EntityID entity = sprites->denseToEntity[i];
+        Transform &t = transforms->Get(entity);
+        Sprite &s = sprites->data[i];
+        DrawRectangle(t.position, t.size, s.color, Texture{.path = s.path});
+    }
+
+    // --- 2. UI SPACE: IMAGES (BACKGROUNDS) ---
+    auto *rects = world.GetPool<RectTransform>();
+    auto *images = world.GetPool<Image>();
+    auto *buttons = world.GetPool<Button>(); // To check hover/press states
+
+    for (size_t i = 0; i < images->data.size(); ++i)
+    {
+        ecs::EntityID entity = images->denseToEntity[i];
+        RectTransform &t = rects->Get(entity);
+        Image &img = images->data[i];
+
+        vec3 finalColor = img.sprite.color;
+
+        // Visual Feedback: If this entity is also a button, tint it
+        if (world.HasComponent<Button>(entity))
+        {
+            Button &btn = world.GetComponent<Button>(entity);
+            if (btn.pressed)
+                finalColor *= 0.5f;
+            else if (btn.hovered)
+                finalColor *= 0.8f;
+        }
+
+        DrawRectangle(t.position, t.size, finalColor, Texture{.path = img.sprite.path});
+    }
+
+    // --- 3. UI SPACE: TEXT (LABELS) ---
+    auto *texts = world.GetPool<Text>();
+    for (size_t i = 0; i < texts->data.size(); ++i)
+    {
+        ecs::EntityID entity = texts->denseToEntity[i];
+        Text &txt = texts->data[i];
+        RectTransform &rect = rects->Get(entity);
+
+        vec2 safePos = rect.position + txt.padding;
+        vec2 safeSize = rect.size - (txt.padding * 2.0f);
+
+        // For "Middle", we pass the center of the safe zone
+        vec2 renderAnchor = safePos;
+        if (txt.vertical == VerticalAlignment::Middle)
+        {
+            renderAnchor.y = safePos.y + (safeSize.y * 0.5f);
+        }
+        else if (txt.vertical == VerticalAlignment::Top)
+        {
+            renderAnchor.y = safePos.y; // DrawTextUI will handle the "offset from top"
+        }
+
+        DrawTextUI(TextData{
+                       .content = txt.content,
+                       .scale = txt.scale,
+                       .color = txt.color,
+                       .maxWidth = safeSize.x},
+                   renderAnchor, txt.vertical, txt.horizontal);
+    }
+}
+
+void UpdateSystem()
+{
+    auto *buttons = world.GetPool<Button>();
+    auto *rects = world.GetPool<RectTransform>();
+
+    vec2 mousePos = vec2(input.mouseX, input.screen.y - input.mouseY);
+    bool mouseIsDown = input.mouseDown[0];
+
+    for (size_t i = 0; i < buttons->data.size(); ++i)
+    {
+        ecs::EntityID entity = buttons->denseToEntity[i];
+        Button &btn = buttons->data[i];
+        RectTransform &rect = rects->Get(entity);
+
+        bool inside = (mousePos.x >= rect.position.x &&
+                       mousePos.x <= rect.position.x + rect.size.x &&
+                       mousePos.y >= rect.position.y &&
+                       mousePos.y <= rect.position.y + rect.size.y);
+
+        btn.hovered = inside;
+
+        // Logic: Trigger when mouse is RELEASED over the button
+        if (inside && btn.pressed && !mouseIsDown)
+        {
+            if (btn.onClick)
+                btn.onClick();
+        }
+
+        btn.pressed = inside && mouseIsDown;
+    }
+}
+
 void Update(float deltaTime);
-
+void Start();
 int main()
 {
     if (!InitPlatform())
@@ -18,7 +209,10 @@ int main()
     {
         Event event;
         PollEvent(&event);
+
         Update(event.deltaTime);
+        RenderSystem();
+
         glRender();
         SwapBuffersWindow();
     }
@@ -27,19 +221,48 @@ int main()
     return 0;
 }
 
-// this use for load resources
 void Start()
 {
+    Entity player = {.id = world.CreateEntity(), .world = &world};
+    Entity text = {.id = world.CreateEntity(), .world = &world};
+
+    player.Add(
+              Transform{
+                  .position = vec2(100),
+                  .size = vec2(50)})
+        .Add(Sprite{"assets/textures/profile.jpg", vec3(1.0f)});
+    text.Add(
+            RectTransform{
+                .position = vec2(10, 10),
+                .size = vec2(300, 100),
+            })
+        .Add(
+            Image{
+                .sprite = Sprite{
+                    .path = "assets/textures/profile.jpg",
+                    .color = vec3(1.0f, 0.8f, 0.5f)}});
+
+    Entity myBtn = {world.CreateEntity(), &world};
+
+    myBtn.Add(RectTransform{vec2(400, 200), vec2(200, 60)})
+        .Add(Image{Sprite{"white_quad", vec3(1.0f)}})
+        .Add(Text{
+            .content = "Click Me!",
+            .scale = 0.8f,
+            .color = vec3(0.0f), // Black text on white button
+            .horizontal = TextAlignment::Center,
+            .vertical = VerticalAlignment::Middle,
+            .padding = vec2(20.0f, 10.0f) // Extra breathing room
+        })
+        .Add(Button{
+            .onClick = []()
+            {
+                printf("Button Clicked! Spawning an entity...\n");
+                // You can even interact with the world here!
+            }});
 }
 
 void Update(float deltaTime)
 {
-    DrawRectangle(vec2(50, 50), vec2(200, 200), vec3(1.0f), Sprite{.path = "assets/textures/profile.jpg"});
-
-    // Draw text on top
-    DrawTextUI(
-        {.content = "Hello, World!\n@Hi",
-         .scale = 1.0f,
-         .color = vec3(1.0f)},
-        vec2(60.0f, 90.0f));
+    UpdateSystem();
 }

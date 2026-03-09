@@ -31,7 +31,7 @@ enum Shape
     Triangle
 };
 
-struct Sprite
+struct Texture 
 {
     str path;
     u32 id;
@@ -43,7 +43,7 @@ struct Batch
     std::vector<Vertex> vertices;
     vec3 color;
     Shape shape;
-    Sprite sprite;
+    Texture sprite;
 };
 
 struct GLContext
@@ -55,11 +55,26 @@ struct GLContext
     Shader *shader;
 };
 
-struct Text
+struct TextData
 {
     str content;
     float scale;
     vec3 color;
+    float maxWidth;
+};
+
+enum class TextAlignment
+{
+    Left,
+    Center,
+    Right
+};
+
+enum class VerticalAlignment
+{
+    Top,
+    Middle,
+    Bottom
 };
 
 // --- Globals ---
@@ -74,5 +89,5 @@ void glRender();
 void DestroyGLContext();
 
 u32 GetTexture(const str &path);
-void DrawRectangle(vec2 pos, vec2 size, vec3 color = vec3(1.0f), Sprite sprite = Sprite{.path = ""});
-void DrawTextUI(Text text, vec2 pos);
+void DrawRectangle(vec2 pos, vec2 size, vec3 color = vec3(1.0f), Texture sprite = Texture{.path = ""});
+void DrawTextUI(TextData text, vec2 pos, VerticalAlignment vAlign, TextAlignment hAlign);

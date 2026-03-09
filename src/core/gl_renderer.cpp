@@ -7,6 +7,8 @@
 
 #include <stb/stb_image.h>
 
+#include <sstream>
+
 GLContext gl;
 std::map<char, Character> Characters;
 
@@ -188,7 +190,7 @@ u32 GetTexture(const str &path)
     return textureID;
 }
 
-void DrawRectangle(vec2 pos, vec2 size, vec3 color, Sprite sprite)
+void DrawRectangle(vec2 pos, vec2 size, vec3 color, Texture sprite)
 {
     // If the sprite has a path but no ID yet, resolve it once
     if (sprite.id == 0 && !sprite.path.empty())
@@ -217,76 +219,105 @@ void DrawRectangle(vec2 pos, vec2 size, vec3 color, Sprite sprite)
     targetBatch->vertices.insert(targetBatch->vertices.end(), vertices.begin(), vertices.end());
 }
 
-void DrawTextUI(Text text, vec2 pos)
+void DrawTextUI(TextData text, vec2 pos, VerticalAlignment vAlign, TextAlignment hAlign)
 {
-    float startX = pos.x;                  // Keep track of the starting X for new lines
-    float lineHeight = 48.0f * text.scale; // Matches the pixel size in LoadFont
+    float lineHeight = 48.0f * text.scale;
+    float startX = pos.x;
 
-    for (int i = 0; i < text.content.length(); i++)
-    {
-        char c = text.content[i];
+    // --- PASS 1: WORD WRAP LAYOUT ---
+    std::vector<std::string> lines;
+    std::string currentLine = "";
+    float currentLineWidth = 0.0f;
 
-        // 1. Handle Special Characters
-        if (c == '\n')
-        {
-            pos.y -= lineHeight; // Move down
-            pos.x = startX;      // Reset to start of line
-            continue;
+    std::stringstream ss(text.content);
+    std::string word;
+
+    while (ss >> word) {
+        float wordWidth = 0;
+        for (char c : word) {
+            if (Characters.find(c) != Characters.end())
+                wordWidth += (Characters[c].Advance >> 6) * text.scale;
         }
-        if (c == '\r')
-        {
-            pos.x = startX; // Carriage return
-            continue;
-        }
-        if (c == '\t')
-        {
-            // Tab: Advance by 4 spaces (or any fixed amount)
-            pos.x += (Characters[' '].Advance >> 6) * text.scale * 4;
-            continue;
-        }
-        if (c == '\b')
-        {
-            // Backspace: Very rare in static rendering, but move cursor back
-            pos.x -= (Characters[' '].Advance >> 6) * text.scale;
-            continue;
-        }
+        
+        float spaceWidth = (Characters[' '].Advance >> 6) * text.scale;
 
-        // 2. Normal Character Rendering
-        if (Characters.find(c) == Characters.end())
-            continue;
-
-        Character ch = Characters[c];
-
-        float xpos = pos.x + ch.Bearing.x * text.scale;
-        float ypos = pos.y - (ch.Size.y - ch.Bearing.y) * text.scale;
-        float w = ch.Size.x * text.scale;
-        float h = ch.Size.y * text.scale;
-
-        Sprite charSprite;
-        charSprite.path = std::to_string(ch.texID);
-
-        Batch *targetBatch = nullptr;
-        for (auto &b : gl.ui_batch)
-        {
-            if (b.sprite.path == charSprite.path && b.color == text.color)
-            {
-                targetBatch = &b;
-                break;
+        if (text.maxWidth > 0 && (currentLineWidth + wordWidth) > text.maxWidth && !currentLine.empty()) {
+            lines.push_back(currentLine);
+            currentLine = word;
+            currentLineWidth = wordWidth;
+        } else {
+            if (!currentLine.empty()) {
+                currentLine += " ";
+                currentLineWidth += spaceWidth;
             }
+            currentLine += word;
+            currentLineWidth += wordWidth;
+        }
+    }
+    if (!currentLine.empty()) lines.push_back(currentLine);
+
+    // --- PASS 2: VERTICAL ALIGNMENT CALCULATION ---
+    float totalBlockHeight = (float)lines.size() * lineHeight;
+    
+    // We adjust the starting Y so the ENTIRE block is centered on 'pos.y'
+    if (vAlign == VerticalAlignment::Middle) {
+        // Move up by half the block height, then adjust for the first line's baseline
+        pos.y += (totalBlockHeight * 0.5f) - (lineHeight * 0.75f);
+    } 
+    else if (vAlign == VerticalAlignment::Top) {
+        // Start at the very top of the box
+        pos.y += totalBlockHeight - lineHeight;
+    }
+    // Bottom alignment stays at the provided pos.y
+
+    // --- PASS 3: RENDER ---
+    for (const std::string& line : lines) {
+        float lineX = startX;
+
+        // Per-line Horizontal Alignment
+        if (hAlign == TextAlignment::Center && text.maxWidth > 0) {
+            float lw = 0;
+            for (char c : line) lw += (Characters[c].Advance >> 6) * text.scale;
+            lineX += (text.maxWidth - lw) * 0.5f;
+        } 
+        else if (hAlign == TextAlignment::Right && text.maxWidth > 0) {
+            float lw = 0;
+            for (char c : line) lw += (Characters[c].Advance >> 6) * text.scale;
+            lineX += (text.maxWidth - lw);
         }
 
-        if (!targetBatch)
-        {
-            gl.ui_batch.push_back(Batch{
-                .color = text.color,
-                .shape = Shape::Rect,
-                .sprite = charSprite});
-            targetBatch = &gl.ui_batch.back();
+        for (char c : line) {
+            if (Characters.find(c) == Characters.end()) continue;
+            Character ch = Characters[c];
+
+            float xpos = lineX + ch.Bearing.x * text.scale;
+            float ypos = pos.y - (ch.Size.y - ch.Bearing.y) * text.scale;
+            float w = ch.Size.x * text.scale;
+            float h = ch.Size.y * text.scale;
+
+            Texture charSprite;
+            charSprite.path = std::to_string(ch.texID);
+
+            Batch* targetBatch = nullptr;
+            for (auto& b : gl.ui_batch) {
+                if (b.sprite.path == charSprite.path && b.color == text.color) {
+                    targetBatch = &b;
+                    break;
+                }
+            }
+
+            if (!targetBatch) {
+                gl.ui_batch.push_back(Batch{.color = text.color, .sprite = charSprite});
+                targetBatch = &gl.ui_batch.back();
+            }
+
+            auto verts = CreateQuad({xpos, ypos}, {w, h}, {0.0f, 1.0f}, {1.0f, -1.0f});
+            targetBatch->vertices.insert(targetBatch->vertices.end(), verts.begin(), verts.end());
+
+            lineX += (ch.Advance >> 6) * text.scale;
         }
-
-        auto verts = CreateQuad({xpos, ypos}, {w, h}, {0.0f, 1.0f}, {1.0f, -1.0f});
-        targetBatch->vertices.insert(targetBatch->vertices.end(), verts.begin(), verts.end());
-
-        pos.x += (ch.Advance >> 6) * text.scale;
+        
+        // Step down to the next line
+        pos.y -= lineHeight; 
     }
 }

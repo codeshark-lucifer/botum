@@ -123,6 +123,14 @@ struct Vec3
         return *this;
     }
 
+    Vec3 &operator*=(const float &v)
+    {
+        x *= v;
+        y *= v;
+        z *= v;
+        return *this;
+    }
+
     float Length() const
     {
         return std::sqrt(x * x + y * y + z * z);

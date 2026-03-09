@@ -34,6 +34,7 @@ add_executable(app
     src/core/win32.cpp
     src/core/shader.cpp
     src/core/stb_image.cpp
+    src/core/gl_renderer.cpp
 )
 
 target_include_directories(app PRIVATE 

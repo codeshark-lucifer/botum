@@ -32,7 +32,11 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
         int width = rc.right - rc.left;
         int height = rc.bottom - rc.top;
         input.screen = ivec2(width, height);
-        glViewport(0, 0, width, height);
+        if (gladLoadGL != nullptr) { // Simple way to check if GLAD is initialized, but maybe not enough
+             // Better: check if functions are loaded. Actually gladLoadGL is the loader function.
+             // We can check if glViewport pointer is not null.
+             if (glViewport) glViewport(0, 0, width, height);
+        }
         return 0;
     }
 
@@ -179,6 +183,13 @@ Window CreateWindowPlatform(const str &name, const i32 &width, const i32 &height
 
     wglMakeCurrent(hdc, modernContext);
 
+    // Re-initialize GLAD for the modern context
+    if (!gladLoadGL())
+    {
+        MessageBoxA(0, "Failed to re-initialize GLAD for modern context!", "Error", MB_OK | MB_ICONERROR);
+        return nullptr;
+    }
+
     glEnable(GL_DEBUG_OUTPUT);
     glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
     glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_TRUE);
@@ -200,7 +211,8 @@ void PollEvent(Event *event)
 {
     LARGE_INTEGER now;
     QueryPerformanceCounter(&now);
-    event->deltaTime = (float)(now.QuadPart - lastCounter.QuadPart) / frequency.QuadPart;
+    float dt = (float)(now.QuadPart - lastCounter.QuadPart) / frequency.QuadPart;
+    if (event) event->deltaTime = dt;
     lastCounter = now;
 
     for (int i = 0; i < 256; i++)
@@ -226,7 +238,7 @@ void PollEvent(Event *event)
             running = false;
         TranslateMessage(&msg);
         DispatchMessage(&msg);
-        event->msg = msg;
+        if (event) event->msg = msg;
     }
 }
 

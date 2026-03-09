@@ -102,6 +102,13 @@ void Shader::SetUniform<bool>(str name, bool value)
 }
 
 template <>
+void Shader::SetUniform<vec3>(str name, vec3 value)
+{
+    u32 loc = glGetUniformLocation(id, name.c_str());
+    glUniform3f(loc, value.x, value.y, value.z);
+}
+
+template <>
 void Shader::SetUniform<mat4>(str name, mat4 value)
 {
     u32 loc = glGetUniformLocation(id, name.c_str());

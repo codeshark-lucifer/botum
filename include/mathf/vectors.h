@@ -105,6 +105,16 @@ struct Vec3
         return Vec3(-x, -y, -z);
     }
 
+    bool operator==(const Vec3 &v) const
+    {
+        return (x == v.x && y == v.y && z == v.z);
+    }
+    
+    bool operator!=(const Vec3 &v) const
+    {
+        return !(*this == v);
+    }
+
     Vec3 &operator+=(const Vec3 &v)
     {
         x += v.x;

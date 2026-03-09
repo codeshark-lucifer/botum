@@ -9,6 +9,7 @@ public:
     ~Shader();
 
     void Use();
+    u32 GetID() const { return id; }
     
     template<typename T>
     void SetUniform(str name, T value);

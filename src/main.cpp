@@ -14,7 +14,16 @@ struct RectTransform
 {
     vec2 position;
     vec2 size;
+    vec2 anchor = vec2(0.0f); // 0.5 for center
+    vec2 pivot = vec2(0.0f);  // 0.5 for center
 };
+
+vec2 GetUIPosition(const RectTransform& rt) {
+    return vec2(
+        (float)input.screen.x * rt.anchor.x - rt.size.x * rt.pivot.x + rt.position.x,
+        (float)input.screen.y * rt.anchor.y - rt.size.y * rt.pivot.y + rt.position.y
+    );
+}
 
 struct Sprite
 {
@@ -51,10 +60,16 @@ struct Button
     std::function<void()> onClick; // The callback function
 };
 
+struct Active
+{
+    bool IsActive = true;
+};
+
 struct Entity
 {
     ecs::EntityID id;
     ecs::World *world;
+    bool *enabled;
 
     // A helper to add components easily
     template <typename T>
@@ -69,6 +84,14 @@ struct Entity
     T &Get()
     {
         return world->GetComponent<T>(id);
+    }
+
+    void SetActive(bool state)
+    {
+        if (world->HasComponent<Active>(id))
+        {
+            world->GetComponent<Active>(id).IsActive = state;
+        }
     }
 };
 
@@ -92,11 +115,15 @@ void RenderSystem()
     auto *images = world.GetPool<Image>();
     auto *buttons = world.GetPool<Button>(); // To check hover/press states
 
+    auto *actives = world.GetPool<Active>(); // Get the active pool
     for (size_t i = 0; i < images->data.size(); ++i)
     {
         ecs::EntityID entity = images->denseToEntity[i];
-        RectTransform &t = rects->Get(entity);
+        RectTransform &rt = rects->Get(entity);
         Image &img = images->data[i];
+
+        if (world.HasComponent<Active>(entity) && !world.GetComponent<Active>(entity).IsActive)
+            continue;
 
         vec3 finalColor = img.sprite.color;
 
@@ -110,23 +137,28 @@ void RenderSystem()
                 finalColor *= 0.8f;
         }
 
-        DrawRectangle(t.position, t.size, finalColor, Texture{.path = img.sprite.path});
+        DrawRectangle(GetUIPosition(rt), rt.size, finalColor, Texture{.path = img.sprite.path});
     }
 
     // --- 3. UI SPACE: TEXT (LABELS) ---
     auto *texts = world.GetPool<Text>();
+
     for (size_t i = 0; i < texts->data.size(); ++i)
     {
         ecs::EntityID entity = texts->denseToEntity[i];
         Text &txt = texts->data[i];
-        RectTransform &rect = rects->Get(entity);
+        RectTransform &rt = rects->Get(entity);
 
-        vec2 safePos = rect.position + txt.padding;
-        vec2 safeSize = rect.size - (txt.padding * 2.0f);
+        if (world.HasComponent<Active>(entity) && !world.GetComponent<Active>(entity).IsActive)
+            continue;
+        
+        vec2 pos = GetUIPosition(rt);
+        vec2 safePos = pos + txt.padding;
+        vec2 safeSize = rt.size - (txt.padding * 2.0f);
 
         // Calculate anchor based on alignment
         vec2 renderAnchor = safePos;
-        
+
         if (txt.horizontal == TextAlignment::Center)
         {
             renderAnchor.x = safePos.x + (safeSize.x * 0.5f);
@@ -142,7 +174,7 @@ void RenderSystem()
         }
         else if (txt.vertical == VerticalAlignment::Top)
         {
-            renderAnchor.y = safePos.y; 
+            renderAnchor.y = safePos.y;
         }
 
         DrawTextUI(TextData{
@@ -166,12 +198,20 @@ void UpdateSystem()
     {
         ecs::EntityID entity = buttons->denseToEntity[i];
         Button &btn = buttons->data[i];
-        RectTransform &rect = rects->Get(entity);
+        RectTransform &rt = rects->Get(entity);
 
-        bool inside = (mousePos.x >= rect.position.x &&
-                       mousePos.x <= rect.position.x + rect.size.x &&
-                       mousePos.y >= rect.position.y &&
-                       mousePos.y <= rect.position.y + rect.size.y);
+        if (world.HasComponent<Active>(entity) && !world.GetComponent<Active>(entity).IsActive)
+        {
+            buttons->data[i].hovered = false;
+            buttons->data[i].pressed = false;
+            continue;
+        }
+
+        vec2 pos = GetUIPosition(rt);
+        bool inside = (mousePos.x >= pos.x &&
+                       mousePos.x <= pos.x + rt.size.x &&
+                       mousePos.y >= pos.y &&
+                       mousePos.y <= pos.y + rt.size.y);
 
         btn.hovered = inside;
 
@@ -214,56 +254,47 @@ int main()
     return 0;
 }
 
+Entity button;
+Entity mainmenu;
+
 void Start()
 {
-    Entity player = {.id = world.CreateEntity(), .world = &world};
-    Entity text = {.id = world.CreateEntity(), .world = &world};
+    // Initialize entities
+    mainmenu = {world.CreateEntity(), &world};
+    button = {world.CreateEntity(), &world};
 
-    player.Add(
-              Transform{
-                  .position = vec2(100),
-                  .size = vec2(50)})
-        .Add(Sprite{"assets/textures/profile.jpg", vec3(1.0f)});
-    text.Add(
-            RectTransform{
-                .position = vec2(10, 10),
-                .size = vec2(300, 100),
-            })
-        .Add(
-            Image{
-                .sprite = Sprite{
-                    .path = "assets/textures/profile.jpg",
-                    .color = vec3(1.0f, 0.8f, 0.5f)}});
+    // Setup Main Menu (the thing we want to hide/show)
+    mainmenu.Add(Active{true})
+        .Add(RectTransform{
+            .position = vec2(0), 
+            .size = vec2(400, 300),
+            .anchor = vec2(0.5f), 
+            .pivot = vec2(0.5f)})
+        .Add(Image{.sprite = Sprite{.path = "assets/textures/profile.png", .color = vec3(0.2f)}});
 
-    Entity myBtn = {world.CreateEntity(), &world};
-
-    myBtn.Add(RectTransform{vec2(400, 200), vec2(200, 60)})
-        .Add(Image{Sprite{"white_quad", vec3(1.0f)}})
+    // Setup Toggle Button
+    button.Add(Active{true})
+        .Add(RectTransform{
+            .position = vec2(0, -150), // 150 pixels below center
+            .size = vec2(200, 60), 
+            .anchor = vec2(0.5f), 
+            .pivot = vec2(0.5f)})
+        .Add(Image{.sprite = Sprite{.path = "assets/textures/sprite.png", .color = vec3(1.0f)}})
         .Add(Text{
-            .content = "Click Me!",
-            .scale = 0.8f,
-            .color = vec3(0.0f), // Black text on white button
+            .content = "Toggle Menu",
+            .scale = 0.5f,
+            .color = vec3(0.0f),
             .horizontal = TextAlignment::Center,
-            .vertical = VerticalAlignment::Middle,
-            .padding = vec2(20.0f, 10.0f) // Extra breathing room
-        })
-        .Add(Button{
-            .onClick = []()
-            {
-                printf("Button Clicked! Spawning an entity...\n");
-                // You can even interact with the world here!
-            }});
+            .vertical = VerticalAlignment::Middle})
+        .Add(Button{.onClick = []()
+                    {
+                        // Access the 'mainmenu' global variable
+                        bool currentState = world.GetComponent<Active>(mainmenu.id).IsActive;
+                        mainmenu.SetActive(!currentState);
 
-    Entity khmerText = {world.CreateEntity(), &world};
-    khmerText.Add(RectTransform{vec2(100, 400), vec2(400, 100)})
-        .Add(Text{
-            .content = "សួស្តីពិភពលោក (Hello World)",
-            .scale = 1.0f,
-            .color = vec3(1.0f),
-            .horizontal = TextAlignment::Left,
-            .vertical = VerticalAlignment::Middle
-        });
-    }
+                        printf("Menu is now %s\n", !currentState ? "VISIBLE" : "HIDDEN");
+                    }});
+}
 
 void Update(float deltaTime)
 {
